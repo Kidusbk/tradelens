@@ -37,9 +37,13 @@
   --color-border-subtle: oklch(22% 0.01 250);
 
   /* Semantic trading colors */
-  --color-profit: oklch(65% 0.18 145);
-  --color-loss:   oklch(62% 0.2  20);
-  --color-warn:   oklch(75% 0.18 80);
+  --color-profit:  oklch(65% 0.18 145);
+  --color-loss:    oklch(62% 0.2  20);
+  --color-warn:    oklch(75% 0.18 80);
+
+  /* Aliases for UI code (more readable than profit/loss in non-trading contexts) */
+  --color-success: oklch(65% 0.18 145);
+  --color-danger:  oklch(62% 0.2  20);
 }
 
 /* -----------------------------------------------------------------------------
@@ -72,3 +76,15 @@
     }
   }
 }
+
+/* -----------------------------------------------------------------------------
+   Animations
+   @keyframes must be at the top level, not inside @layer base.
+   ----------------------------------------------------------------------------- */
+
+/* Skeleton loading shimmer — used by src/components/skeleton.tsx */
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
