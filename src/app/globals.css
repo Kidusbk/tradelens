@@ -88,3 +88,15 @@
   100% { background-position: -200% 0; }
 }
 
+/* -----------------------------------------------------------------------------
+   Component styles
+   These replace inline JS event handlers on Server Components.
+   Server Components cannot use onMouseEnter/onMouseLeave — those require
+   a Client Component. A CSS :hover rule achieves the same result with
+   zero JavaScript.
+   ----------------------------------------------------------------------------- */
+
+.trade-row:hover {
+  background-color: var(--color-surface-2);
+}
+

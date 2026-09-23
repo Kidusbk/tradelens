@@ -136,12 +136,18 @@ function TradeTableRow({ trade }: { trade: Trade }) {
     /*
       Each row is a link to /trades/[id] — the dynamic route we build next.
       Using <Link> not <a> for client-side navigation + prefetching.
+
+      LESSON: We removed onMouseEnter/onMouseLeave — event handlers require
+      a Client Component ('use client'). Instead we use a CSS class with
+      a :hover selector defined in globals.css. Same visual result, zero JS.
+      This is the "minimum client boundary" principle in practice.
     */
     <Link
       href={`/trades/${trade.id}`}
       style={{ textDecoration: "none", color: "inherit" }}
     >
       <div
+        className="trade-row"
         style={{
           display: "grid",
           gridTemplateColumns: "90px 60px 90px 110px 110px 100px 1fr",
@@ -153,13 +159,6 @@ function TradeTableRow({ trade }: { trade: Trade }) {
           cursor: "pointer",
           transition: "background-color 150ms",
         }}
-        onMouseEnter={(e) =>
-          ((e.currentTarget as HTMLDivElement).style.backgroundColor =
-            "var(--color-surface-2)")
-        }
-        onMouseLeave={(e) =>
-          ((e.currentTarget as HTMLDivElement).style.backgroundColor = "")
-        }
       >
         {/* Symbol */}
         <span
