@@ -22,7 +22,7 @@
 
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getTradeById, formatPnl, formatR } from "@/lib/data";
+import { getTradeById, formatPnl, formatR, toNum } from "@/lib/data";
 import Link from "next/link";
 
 // ─── Dynamic Metadata ─────────────────────────────────────────────────────────
@@ -63,6 +63,8 @@ export default async function TradeDetailPage({ params }: Props) {
 
   const isLong = trade.direction === "LONG";
   const hasPnl = trade.pnl !== null;
+  const pnlNum = toNum(trade.pnl);
+  const rNum = toNum(trade.rMultiple);
 
   return (
     <div style={{ maxWidth: "800px" }}>
@@ -157,7 +159,7 @@ export default async function TradeDetailPage({ params }: Props) {
                 fontSize: "1.75rem",
                 fontWeight: 700,
                 fontFamily: "var(--font-mono)",
-                color: (trade.pnl ?? 0) >= 0 ? "var(--color-success)" : "var(--color-danger)",
+                color: pnlNum >= 0 ? "var(--color-success)" : "var(--color-danger)",
               }}
             >
               {formatPnl(trade.pnl!)}
@@ -166,7 +168,7 @@ export default async function TradeDetailPage({ params }: Props) {
               <div
                 style={{
                   fontSize: "0.875rem",
-                  color: trade.rMultiple >= 0 ? "var(--color-success)" : "var(--color-danger)",
+                  color: rNum >= 0 ? "var(--color-success)" : "var(--color-danger)",
                   fontFamily: "var(--font-mono)",
                 }}
               >

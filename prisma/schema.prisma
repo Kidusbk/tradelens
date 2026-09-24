@@ -1,0 +1,218 @@
+// prisma/schema.prisma
+//
+// This is THE source of truth for the entire database structure.
+// Prisma reads this file to:
+//   1. Generate SQL migration files
+//   2. Generate the TypeScript client (types + query methods)
+//
+// Workflow:
+//   Edit this file → run `npx prisma migrate dev --name "your-change"` →
+//   SQL migration is created → Prisma Client types are regenerated
+//
+// NEVER manually edit the database or migration files.
+// Always make changes here first.
+
+generator client {
+  provider = "prisma-client-js"
+  // output  = "../src/generated/prisma"  // optional: custom output path
+}
+
+datasource db {
+  provider = "postgresql"
+  // url is no longer set here in Prisma v7.
+  // Connection is configured via prisma.config.ts → migrate.adapter()
+  // and via PrismaClient constructor in src/lib/db.ts
+}
+
+// =============================================================================
+// ENUMS
+// Using enums for fixed-choice fields ensures invalid values can never be
+// stored. The database enforces this at the constraint level.
+// =============================================================================
+
+enum TradeDirection {
+  LONG
+  SHORT
+}
+
+enum TradeStatus {
+  OPEN
+  CLOSED
+  CANCELLED  // Trade was cancelled before execution
+}
+
+enum TradingSession {
+  ASIA
+  LONDON
+  NEW_YORK
+  OVERNIGHT
+  PRE_MARKET
+}
+
+enum EmotionalState {
+  CONFIDENT
+  NEUTRAL
+  ANXIOUS
+  FOMO
+  REVENGE  // Trading to recover losses — a major red flag
+  BORED
+}
+
+// =============================================================================
+// USER
+// Day 5: Managed by Auth.js. This model will be extended with auth fields.
+// For now: minimal model, just enough for foreign key relationships.
+// =============================================================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  accounts Account[]
+  trades   Trade[]
+  tags     Tag[]
+
+  @@map("users")  // maps to "users" table (not "User")
+}
+
+// =============================================================================
+// ACCOUNT
+// A trading account: "TD Ameritrade Futures", "APEX Funded", etc.
+// Trades are always linked to an account so P&L is tracked per account.
+// =============================================================================
+
+model Account {
+  id          String   @id @default(cuid())
+  name        String                          // "APEX Funded Account #1"
+  broker      String?                         // "Interactive Brokers"
+  currency    String   @default("USD")
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trades Trade[]
+
+  @@map("accounts")
+}
+
+// =============================================================================
+// TRADE
+// The core model. One entry per round-trip trade.
+// WHY split entry/exit into separate fields instead of arrays?
+//   Simple trades (futures, stocks) have one entry and one exit.
+//   Day 10: If we need scaling in/out, we'll add a TradeExecution model.
+// =============================================================================
+
+model Trade {
+  id String @id @default(cuid())
+
+  // Core trade data
+  symbol        String          // "NQ", "ES", "AAPL", "BTC"
+  direction     TradeDirection  // LONG or SHORT
+  status        TradeStatus     @default(OPEN)
+
+  // Prices — stored as Decimal for financial accuracy
+  // NEVER use Float for money. Float has IEEE 754 rounding errors.
+  // e.g. 0.1 + 0.2 = 0.30000000000000004 in Float
+  entryPrice    Decimal         @db.Decimal(12, 4)
+  exitPrice     Decimal?        @db.Decimal(12, 4)  // null if still open
+  stopLoss      Decimal?        @db.Decimal(12, 4)
+  takeProfit    Decimal?        @db.Decimal(12, 4)
+
+  // Size and outcome
+  positionSize  Int             @default(1)  // number of contracts/shares
+  pnl           Decimal?        @db.Decimal(10, 2)  // null if open
+  rMultiple     Decimal?        @db.Decimal(6, 3)   // e.g. 2.100
+
+  // Categorization
+  strategy      String?         // "Momentum Breakout", "Mean Reversion"
+  session       TradingSession?
+  emotionalState EmotionalState?
+
+  // Notes
+  notes         String?         // free-form trade notes
+
+  // Timestamps
+  openedAt      DateTime
+  closedAt      DateTime?       // null if still open
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relations
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String
+  account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tags      TradeTag[]    // many-to-many through TradeTag join table
+  journal   JournalEntry? // one-to-one optional journal entry
+
+  // Indexes — critical for query performance
+  // We'll query trades by userId + date range frequently
+  @@index([userId, openedAt])
+  @@index([userId, status])
+  @@index([accountId])
+
+  @@map("trades")
+}
+
+// =============================================================================
+// TAG
+// User-defined labels for trades: "fomo", "high-confidence", "news-driven"
+// Many-to-many with Trade through TradeTag.
+// =============================================================================
+
+model Tag {
+  id    String @id @default(cuid())
+  name  String
+  color String @default("#6366f1")  // hex color for UI display
+
+  userId String
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trades TradeTag[]
+
+  @@unique([userId, name])  // each user can have one tag with a given name
+  @@map("tags")
+}
+
+// =============================================================================
+// TRADETAG — Join table for Trade ↔ Tag many-to-many
+// Prisma requires explicit join tables for many-to-many with extra fields.
+// =============================================================================
+
+model TradeTag {
+  tradeId String
+  tagId   String
+  trade   Trade  @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([tradeId, tagId])  // composite primary key
+  @@map("trade_tags")
+}
+
+// =============================================================================
+// JOURNALENTRY
+// One optional journal entry per trade.
+// Pre-trade: what's the plan? Post-trade: what happened? What did you learn?
+// =============================================================================
+
+model JournalEntry {
+  id          String   @id @default(cuid())
+  preThoughts  String?  // written before the trade — forces discipline
+  postThoughts String?  // written after — the learning
+  lessonsLearned String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tradeId String @unique  // one-to-one: each trade has at most one journal entry
+  trade   Trade  @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@map("journal_entries")
+}

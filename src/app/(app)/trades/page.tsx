@@ -11,7 +11,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAllTrades, formatPnl, formatR, type Trade } from "@/lib/data";
+import { getAllTrades, formatPnl, formatR, toNum, type Trade } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Trades",
@@ -131,6 +131,8 @@ function TradeTableRow({ trade }: { trade: Trade }) {
   const isLong = trade.direction === "LONG";
   const isOpen = trade.status === "OPEN";
   const hasPnl = trade.pnl !== null;
+  const pnlNum = toNum(trade.pnl);
+  const rNum = toNum(trade.rMultiple);
 
   return (
     /*
@@ -226,7 +228,7 @@ function TradeTableRow({ trade }: { trade: Trade }) {
             fontWeight: 600,
             color: !hasPnl
               ? "var(--color-text-muted)"
-              : (trade.pnl ?? 0) >= 0
+              : pnlNum >= 0
               ? "var(--color-success)"
               : "var(--color-danger)",
           }}
@@ -241,7 +243,7 @@ function TradeTableRow({ trade }: { trade: Trade }) {
             color:
               trade.rMultiple === null
                 ? "var(--color-text-muted)"
-                : trade.rMultiple >= 0
+                : rNum >= 0
                 ? "var(--color-success)"
                 : "var(--color-danger)",
           }}

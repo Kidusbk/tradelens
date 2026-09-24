@@ -1,50 +1,37 @@
 /**
  * Data Layer — src/lib/data.ts
  *
- * WHERE: Server-only. This module MUST NEVER be imported by Client Components.
- * WHY:   All data access logic lives here, isolated from the UI layer.
- *        Today: simulated with fake data + artificial delays.
- *        Day 3: Replace with real Prisma queries.
- *        Day 5: Add userId filtering for authorization.
+ * Day 3 update: Mock data replaced with real Prisma queries.
+ * The function signatures are IDENTICAL to Day 2 — pages don't change at all.
+ * This is the power of the data layer pattern: swap the implementation,
+ * the UI never knows.
  *
- * The artificial delays (simulate()) are here deliberately so you can SEE
- * streaming in action in the browser's Network tab. Slow = visible streaming.
- * Remove them once Prisma is wired up.
+ * DAY 5: Add userId parameter everywhere for auth-based filtering.
+ * Currently using DEV_USER_ID as a placeholder.
  *
- * PATTERN: Functions here are async and return typed data.
- * The pages that call them are Server Components — they await directly,
- * no useEffect, no fetch('/api/...'), no loading state in the component.
- * The loading.tsx file handles the loading state.
+ * WHY NOT QUERY FROM PAGES DIRECTLY?
+ *   Pages shouldn't know about Prisma, SQL, or database structure.
+ *   They call a named function and get typed data back. If we switch
+ *   from Prisma to Drizzle, or from PostgreSQL to MySQL, only this file
+ *   changes — zero page changes.
  */
 
-// Simulates a database query with artificial latency.
-// You can see this working in the browser: the layout + skeleton render
-// instantly, then content streams in after this delay resolves.
-function simulate(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-// These will be replaced by generated Prisma types on Day 3.
-// Defining them here now so TypeScript is happy and we learn the data shape.
+// ─── Temporary dev constant ───────────────────────────────────────────────────
+// Day 5: Replace with: const { userId } = await auth()
+// This is the ID we created in prisma/seed.ts
+const DEV_USER_ID = "user_dev_seed";
 
-export type TradeDirection = "LONG" | "SHORT";
-export type TradeStatus = "OPEN" | "CLOSED";
+// ─── Types ────────────────────────────────────────────────────────────────────
+// Re-export from Prisma's generated types so pages import from one place.
+// When we add fields to the schema, these types update automatically.
 
-export type Trade = {
-  id: string;
-  symbol: string;
-  direction: TradeDirection;
-  status: TradeStatus;
-  entryPrice: number;
-  exitPrice: number | null;
-  positionSize: number;
-  pnl: number | null;
-  rMultiple: number | null;
-  strategy: string | null;
-  openedAt: Date;
-  closedAt: Date | null;
-};
+// A trade with all scalar fields (no relations)
+export type Trade = Prisma.TradeGetPayload<{
+  include: { tags: { include: { tag: true } } };
+}>;
 
 export type DashboardStats = {
   totalTrades: number;
@@ -55,127 +42,49 @@ export type DashboardStats = {
   avgRMultiple: number;
 };
 
-// ─── Simulated Data ──────────────────────────────────────────────────────────
-// Realistic-looking trade data. Day 3 this comes from PostgreSQL via Prisma.
-
-const MOCK_TRADES: Trade[] = [
-  {
-    id: "trd_001",
-    symbol: "NQ",
-    direction: "LONG",
-    status: "CLOSED",
-    entryPrice: 21450.5,
-    exitPrice: 21512.75,
-    positionSize: 1,
-    pnl: 1245.0,
-    rMultiple: 2.1,
-    strategy: "Momentum Breakout",
-    openedAt: new Date("2026-09-20T09:32:00Z"),
-    closedAt: new Date("2026-09-20T11:15:00Z"),
-  },
-  {
-    id: "trd_002",
-    symbol: "ES",
-    direction: "SHORT",
-    status: "CLOSED",
-    entryPrice: 5820.25,
-    exitPrice: 5805.5,
-    positionSize: 2,
-    pnl: 1475.0,
-    rMultiple: 1.8,
-    strategy: "Mean Reversion",
-    openedAt: new Date("2026-09-20T13:45:00Z"),
-    closedAt: new Date("2026-09-20T14:20:00Z"),
-  },
-  {
-    id: "trd_003",
-    symbol: "NQ",
-    direction: "LONG",
-    status: "CLOSED",
-    entryPrice: 21380.0,
-    exitPrice: 21340.25,
-    positionSize: 1,
-    pnl: -795.0,
-    rMultiple: -1.0,
-    strategy: "Momentum Breakout",
-    openedAt: new Date("2026-09-21T10:00:00Z"),
-    closedAt: new Date("2026-09-21T10:35:00Z"),
-  },
-  {
-    id: "trd_004",
-    symbol: "GC",
-    direction: "LONG",
-    status: "CLOSED",
-    entryPrice: 2682.4,
-    exitPrice: 2695.8,
-    positionSize: 1,
-    pnl: 1340.0,
-    rMultiple: 2.4,
-    strategy: "Trend Following",
-    openedAt: new Date("2026-09-21T14:30:00Z"),
-    closedAt: new Date("2026-09-22T09:10:00Z"),
-  },
-  {
-    id: "trd_005",
-    symbol: "ES",
-    direction: "LONG",
-    status: "OPEN",
-    entryPrice: 5835.0,
-    exitPrice: null,
-    positionSize: 1,
-    pnl: null,
-    rMultiple: null,
-    strategy: "Momentum Breakout",
-    openedAt: new Date("2026-09-23T09:35:00Z"),
-    closedAt: null,
-  },
-];
-
 // ─── Data Access Functions ────────────────────────────────────────────────────
 
 /**
  * getDashboardStats()
- *
- * WHERE: Called in Server Components (dashboard page).
- * WHAT:  Computes aggregate trading statistics.
- * DAY 3: Replace with Prisma aggregation queries.
- * DAY 5: Add userId parameter for authorization.
+ * Real implementation using Prisma aggregation.
+ * Day 2 used: await simulate(150) + in-memory computation
+ * Day 3 uses: db.trade.aggregate() → PostgreSQL does the math
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
-  // Simulate a database aggregation query (150ms)
-  await simulate(150);
+  // Run both aggregation queries in parallel
+  const [totalCount, closedTrades] = await Promise.all([
+    db.trade.count({ where: { userId: DEV_USER_ID } }),
+    db.trade.findMany({
+      where: { userId: DEV_USER_ID, status: "CLOSED" },
+      select: { pnl: true, rMultiple: true },
+    }),
+  ]);
 
-  const closedTrades = MOCK_TRADES.filter(
-    (t) => t.status === "CLOSED" && t.pnl !== null
-  );
+  const pnlValues = closedTrades
+    .map((t) => Number(t.pnl ?? 0))
+    .filter((_, i) => closedTrades[i].pnl !== null);
 
-  const winningTrades = closedTrades.filter((t) => (t.pnl ?? 0) > 0);
-  const losingTrades = closedTrades.filter((t) => (t.pnl ?? 0) < 0);
+  const wins = pnlValues.filter((p) => p > 0);
+  const losses = pnlValues.filter((p) => p < 0);
 
-  const netPnl = closedTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
-  const grossProfit = winningTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
-  const grossLoss = Math.abs(
-    losingTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0)
-  );
+  const netPnl = pnlValues.reduce((sum, p) => sum + p, 0);
+  const grossProfit = wins.reduce((sum, p) => sum + p, 0);
+  const grossLoss = Math.abs(losses.reduce((sum, p) => sum + p, 0));
 
   const winRate =
-    closedTrades.length > 0
-      ? (winningTrades.length / closedTrades.length) * 100
-      : 0;
-
+    pnlValues.length > 0 ? (wins.length / pnlValues.length) * 100 : 0;
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : 0;
 
   const rValues = closedTrades
-    .map((t) => t.rMultiple)
-    .filter((r): r is number => r !== null);
-
+    .map((t) => Number(t.rMultiple))
+    .filter((r) => !isNaN(r) && isFinite(r));
   const avgRMultiple =
     rValues.length > 0
       ? rValues.reduce((sum, r) => sum + r, 0) / rValues.length
       : 0;
 
   return {
-    totalTrades: MOCK_TRADES.length,
+    totalTrades: totalCount,
     closedTrades: closedTrades.length,
     netPnl,
     winRate,
@@ -186,63 +95,82 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
 /**
  * getRecentTrades()
- *
- * WHERE: Called in Server Components.
- * WHAT:  Returns the N most recent trades.
- * DAY 3: Replace with Prisma findMany + orderBy + take.
+ * Real Prisma query: findMany + orderBy + take + include
  */
 export async function getRecentTrades(limit = 5): Promise<Trade[]> {
-  // Simulate a DB query with slightly different latency than getDashboardStats.
-  // This is intentional — it shows how Suspense handles parallel async work.
-  await simulate(200);
-
-  return [...MOCK_TRADES]
-    .sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime())
-    .slice(0, limit);
+  return db.trade.findMany({
+    where: { userId: DEV_USER_ID },
+    orderBy: { openedAt: "desc" },
+    take: limit,
+    include: {
+      tags: { include: { tag: true } },
+    },
+  });
 }
 
 /**
  * getTradeById()
- *
- * WHERE: Called in Server Components (trade detail page).
- * WHAT:  Returns a single trade by ID, or null if not found.
- * NOTE:  Returning null (not throwing) lets the PAGE decide what to do.
- *        The page then calls notFound() — keeping the 404 logic in the UI layer.
- * DAY 3: Replace with Prisma findUnique.
- * DAY 5: Add ownership check: if trade.userId !== session.userId → notFound()
+ * Prisma findUnique — returns null if not found (not throwing).
+ * The page calls notFound() when null is returned.
  */
 export async function getTradeById(id: string): Promise<Trade | null> {
-  await simulate(100);
-  return MOCK_TRADES.find((t) => t.id === id) ?? null;
+  return db.trade.findUnique({
+    where: { id, userId: DEV_USER_ID },
+    include: {
+      tags: { include: { tag: true } },
+      journal: true,
+    },
+  });
 }
 
 /**
  * getAllTrades()
- *
- * WHERE: Called in Server Components (trades list page).
- * WHAT:  Returns all trades (will add filtering/pagination on Day 10).
- * DAY 3: Replace with Prisma findMany.
+ * Returns all trades for the user, newest first.
+ * Day 10: Add pagination + filtering params.
  */
 export async function getAllTrades(): Promise<Trade[]> {
-  await simulate(180);
-  return [...MOCK_TRADES].sort(
-    (a, b) => b.openedAt.getTime() - a.openedAt.getTime()
-  );
+  return db.trade.findMany({
+    where: { userId: DEV_USER_ID },
+    orderBy: { openedAt: "desc" },
+    include: {
+      tags: { include: { tag: true } },
+    },
+  });
 }
 
 // ─── Formatting Helpers ───────────────────────────────────────────────────────
-// These are pure functions — no async, no server, safe anywhere.
+// Pure functions — safe anywhere (server + client).
+// Accepts number | Decimal (Prisma type) | null for convenience.
+// Prisma's Decimal has .toString() and arithmetic works via Number() conversion.
 
-export function formatPnl(pnl: number): string {
-  const sign = pnl >= 0 ? "+" : "";
-  return `${sign}$${Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+type Numeric = number | { toString(): string } | null | undefined;
+
+function toNumber(v: Numeric): number {
+  if (v === null || v === undefined) return 0;
+  return typeof v === "number" ? v : Number(v.toString());
+}
+
+export function formatPnl(pnl: Numeric): string {
+  const n = toNumber(pnl);
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}$${Math.abs(n).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-export function formatR(r: number): string {
-  const sign = r >= 0 ? "+" : "";
-  return `${sign}${r.toFixed(2)}R`;
+export function formatR(r: Numeric): string {
+  const n = toNumber(r);
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}R`;
 }
+
+// Helper used in pages to compare Decimal values
+export function toNum(v: Numeric): number {
+  return toNumber(v);
+}
+

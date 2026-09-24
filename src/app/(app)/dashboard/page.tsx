@@ -34,6 +34,7 @@ import {
   formatPnl,
   formatPercent,
   formatR,
+  toNum,
   type DashboardStats,
   type Trade,
 } from "@/lib/data";
@@ -261,6 +262,7 @@ function KpiCards({ stats }: { stats: DashboardStats }) {
 function TradeRow({ trade }: { trade: Trade }) {
   const isLong = trade.direction === "LONG";
   const hasPnl = trade.pnl !== null;
+  const pnlNum = toNum(trade.pnl);
 
   return (
     <div
@@ -306,7 +308,7 @@ function TradeRow({ trade }: { trade: Trade }) {
           fontWeight: 600,
           color: !hasPnl
             ? "var(--color-text-muted)"
-            : (trade.pnl ?? 0) >= 0
+            : pnlNum >= 0
             ? "var(--color-success)"
             : "var(--color-danger)",
         }}
