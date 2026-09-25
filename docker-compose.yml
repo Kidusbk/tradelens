@@ -9,8 +9,9 @@ services:
       POSTGRES_USER: tradelens
       POSTGRES_PASSWORD: tradelens_dev_password
       POSTGRES_DB: tradelens_dev
+      POSTGRES_HOST_AUTH_METHOD: trust  # no password needed for local dev
     ports:
-      - '5432:5432'
+      - '5433:5432'                  # host 5433 → container 5432 (avoids conflict with local postgres)
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

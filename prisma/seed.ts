@@ -17,8 +17,15 @@
  */
 
 import { PrismaClient, TradeDirection, TradeStatus, TradingSession } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-const prisma = new PrismaClient();
+// Seed script needs to load env itself — Prisma CLI doesn't inject it
+import { loadEnvFile } from "node:process";
+try { loadEnvFile(".env"); } catch {}
+try { loadEnvFile(".env.local"); } catch {}
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log("🌱 Seeding database...");
